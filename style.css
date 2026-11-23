@@ -189,6 +189,7 @@ main { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
 }
 .mode-buttons button:hover { filter: brightness(1.08); }
 .mode-buttons button.secondary { background: #e9edf1; color: var(--ink); }
+.mode-buttons button.share { background: #000; color: #fff; }
 
 .muted { color: var(--muted); font-size: 0.8rem; }
 .option { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 4px; font-size: 0.9rem; cursor: pointer; }

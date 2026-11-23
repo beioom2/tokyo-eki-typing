@@ -479,12 +479,16 @@ function finishGame() {
       `タイム: ${totalSec.toFixed(2)}秒\n` +
       `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回 (計 +${state.hintCount * HINT_PENALTY + state.passCount * PASS_PENALTY}秒)\n` +
       `ミスタイプ: ${state.miss}回 / 正確率: ${accuracyText()}`;
-    if (prevBest === null || totalSec < prevBest) {
+    const isBest = prevBest === null || totalSec < prevBest;
+    if (isBest) {
       storageSet(key, totalSec);
       resultBest.textContent = `🎉 自己ベスト更新！(${kindLabel})`;
     } else {
       resultBest.textContent = `自己ベスト(${kindLabel}): ${prevBest.toFixed(2)}秒`;
     }
+    state.shareText =
+      `${GAME_TITLE} 全駅制覇(${kindLabel})を ${totalSec.toFixed(2)}秒でクリア！${isBest ? "(自己ベスト更新)" : ""}\n` +
+      `${state.total}駅 / ミス${state.miss}回 / 正確率${accuracyText()}`;
   } else {
     // 実際に遊んだ時間(コンボで延長した分を含む)で平均打鍵速度を出す
     const playedSec = Math.max(1, (performance.now() - state.startTime) / 1000);
@@ -499,16 +503,38 @@ function finishGame() {
       `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回`;
     const scoreKey = bestKey("challengeScore", state.showKanji);
     const prevScore = storageGet(scoreKey, null);
-    if (prevScore === null || state.points > prevScore) {
+    const isBest = prevScore === null || state.points > prevScore;
+    if (isBest) {
       storageSet(scoreKey, state.points);
       resultBest.textContent = `🎉 自己ベスト更新！(${kindLabel})`;
     } else {
       resultBest.textContent = `自己ベスト(${kindLabel}): ${prevScore.toLocaleString()}点`;
     }
+    state.shareText =
+      `${GAME_TITLE} 100秒チャレンジ(${kindLabel})で ${state.points.toLocaleString()}点・ランク ${rank}！${isBest ? "(自己ベスト更新)" : ""}\n` +
+      `正解${state.score}駅 / 最大コンボ${state.maxCombo} / 平均${(state.typed / playedSec).toFixed(1)}打/秒`;
   }
   renderBestList();
   document.getElementById("btn-retry").focus();
 }
+
+// ---------- X(旧 Twitter)でシェア ----------
+// 投稿画面(Web インテント)を新しいタブで開くだけなので、トークンやサーバーは不要
+const GAME_TITLE = "東京駅名当てタイピング";
+const SHARE_URL = "https://beioom2.github.io/tokyo-eki-typing/";
+const SHARE_HASHTAGS = ["東京駅名当てタイピング", "タイピング"];
+const SITE_URL = "https://adachi-taiki.com/"; // 作者のサイト(投稿文の末尾に載せる)
+
+function shareToX() {
+  if (!state.shareText) return;
+  // GitHub Pages などで公開中ならそのページの URL、ローカルで開いているときは公開版の URL を載せる
+  const url = /^https?:$/.test(location.protocol) ? location.origin + location.pathname : SHARE_URL;
+  const text = `${state.shareText}
+作者サイト: ${SITE_URL}`;
+  const params = new URLSearchParams({ text, url, hashtags: SHARE_HASHTAGS.join(",") });
+  window.open(`https://x.com/intent/post?${params}`, "_blank", "noopener,noreferrer");
+}
+document.getElementById("btn-share").addEventListener("click", shareToX);
 
 function revealAnswer(s) {
   kanjiEl.textContent = s.kanji;
