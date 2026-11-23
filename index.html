@@ -24,14 +24,18 @@
       <div class="stat"><span class="label">タイム</span><span id="time-label">0.00</span></div>
       <div class="stat"><span class="label">正解</span><span id="score-label">0</span></div>
       <div class="stat"><span class="label">ミス</span><span id="miss-label">0</span></div>
+      <div class="stat challenge-only"><span class="label">得点</span><span id="points-label">0</span></div>
+      <div class="stat challenge-only"><span class="label">コンボ</span><span id="combo-label">0</span></div>
       <div class="stat progress" id="progress"></div>
       <button type="button" id="btn-help" class="help-btn" title="操作方法" aria-expanded="false">?</button>
     </div>
+    <span id="bonus-pop" class="bonus-pop" aria-live="polite"></span>
     <div id="help-pop" class="help-pop" hidden>
       <p><kbd>Enter</kbd> ヒント(読みを1文字表示・+10秒)</p>
       <p><kbd>Esc</kbd> パス(答えを表示・+10秒)</p>
       <p>si / ti / tu / syo / ltu など色々な打ち方に対応。日本語入力オンのままでも OK</p>
       <p>地図はホイールやピンチでズーム、ドラッグで移動。「全体」で全体表示に戻る</p>
+      <p><b>100秒チャレンジ</b>: 各駅は発車バーがなくなる前に答えないと乗り遅れ。ミスなし5連続正解ごとに+3秒。正しく打ったキーとコンボで得点が増える</p>
     </div>
 
     <!-- モード選択(中央のカード) -->
@@ -47,6 +51,7 @@
         <button id="btn-complete">全駅制覇モード</button>
         <button id="btn-challenge">100秒チャレンジ</button>
       </div>
+      <p class="mode-desc">100秒チャレンジ: 発車までに答えよう。ミスなし5連続正解で+3秒、コンボが続くほど得点アップ</p>
       <p class="best-list" id="best-list"></p>
       <details class="station-ref">
         <summary>収録駅一覧(路線別・参考)</summary>
@@ -58,6 +63,7 @@
     <!-- 出題(駅から引き出し線でつないだ吹き出し) -->
     <div id="leader" class="leader" hidden></div>
     <div id="play-panel" class="bubble" hidden>
+      <div class="depart challenge-only" title="発車まで"><span id="depart-fill"></span></div>
       <div class="kanji" id="current-kanji">-</div>
       <div class="line-badges" id="current-lines"></div>
       <div class="kana-hint" id="current-hint">&nbsp;</div>

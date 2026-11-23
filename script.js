@@ -1,6 +1,15 @@
 // 東京 駅名当てタイピングゲーム - ゲームロジック
 
 const CHALLENGE_SECONDS = 100;
+// 100秒チャレンジ: 発車タイマー・コンボ・得点
+const DEPART_BASE_SEC = 2.5; // 1問の制限時間 = 基本 + 1キーあたり × 最短ローマ字の文字数
+const DEPART_PER_KEY_SEC = 0.4;
+const DEPART_MAPONLY_EXTRA_SEC = 2; // 駅名を隠すモードは思い出す時間を足す
+const COMBO_STEP = 5; // この数ごとに残り時間を加算
+const COMBO_BONUS_SEC = 3;
+const POINTS_PER_KEY = 10;
+const POINTS_PER_STATION = 50;
+const RANKS = [["S", 15000], ["A", 10000], ["B", 6000], ["C", 3000], ["D", 0]];
 const HINT_PENALTY = 10;
 const PASS_PENALTY = 10;
 const STORAGE_PREFIX = "tokyoEkiTyping.";
@@ -192,6 +201,10 @@ const resultDetail = document.getElementById("result-detail");
 const resultBest = document.getElementById("result-best");
 const showKanjiEl = document.getElementById("opt-show-kanji");
 const bestListEl = document.getElementById("best-list");
+const pointsLabel = document.getElementById("points-label");
+const comboLabel = document.getElementById("combo-label");
+const departFill = document.getElementById("depart-fill");
+const bonusPop = document.getElementById("bonus-pop");
 
 showKanjiEl.checked = storageGet("showKanji", true);
 showKanjiEl.addEventListener("change", () => {
@@ -218,6 +231,16 @@ let state = {
   penaltyMs: 0,
   timerHandle: null,
   lastValid: "",
+  // 100秒チャレンジ用
+  points: 0,
+  combo: 0,
+  maxCombo: 0,
+  bonusSec: 0,
+  missedTrains: 0,
+  qMiss: 0, // 今の問題でのミスタイプ数
+  qHint: false, // 今の問題でヒントを使ったか
+  qStart: 0,
+  qLimitMs: 0,
 };
 
 function shuffledStationIds() {
@@ -236,10 +259,10 @@ function bestKey(mode, showKanji) {
 function renderBestList() {
   const sk = showKanjiEl.checked;
   const c = storageGet(bestKey("complete", sk), null);
-  const ch = storageGet(bestKey("challenge", sk), null);
+  const ch = storageGet(bestKey("challengeScore", sk), null);
   bestListEl.textContent =
     `自己ベスト(${sk ? "駅名表示あり" : "地図のみ"}): ` +
-    `全駅制覇 ${c !== null ? c.toFixed(2) + "秒" : "-"} / 100秒 ${ch !== null ? ch + "駅" : "-"}`;
+    `全駅制覇 ${c !== null ? c.toFixed(2) + "秒" : "-"} / 100秒 ${ch !== null ? ch.toLocaleString() + "点" : "-"}`;
 }
 renderBestList();
 
@@ -261,7 +284,13 @@ function startGame(mode) {
   state.miss = 0;
   state.typed = 0;
   state.penaltyMs = 0;
+  state.points = 0;
+  state.combo = 0;
+  state.maxCombo = 0;
+  state.bonusSec = 0;
+  state.missedTrains = 0;
   state.startTime = performance.now();
+  document.body.classList.toggle("mode-challenge", mode === "challenge");
 
   modeLabel.textContent = mode === "complete" ? "全駅制覇" : "100秒";
   idlePanel.hidden = true;
@@ -318,8 +347,63 @@ function nextQuestion() {
   markerById[state.current].bringToFront();
   setPulse(s);
   state.locked = false;
+  state.qMiss = 0;
+  state.qHint = false;
+  if (state.mode === "challenge") {
+    const keys = Math.min(...s.romaji.map((r) => r.length));
+    const sec = DEPART_BASE_SEC + DEPART_PER_KEY_SEC * keys + (state.showKanji ? 0 : DEPART_MAPONLY_EXTRA_SEC);
+    state.qLimitMs = sec * 1000;
+    state.qStart = performance.now();
+    updateDepartBar(1);
+  }
   updateProgress();
   placeBubble(true);
+}
+
+// ---------- 100秒チャレンジ: 発車タイマー・コンボ・得点 ----------
+function comboMultiplier(combo) {
+  return combo >= 30 ? 3 : combo >= 20 ? 2 : combo >= 10 ? 1.5 : 1;
+}
+
+function resetCombo() {
+  state.combo = 0;
+}
+
+function updateDepartBar(ratio) {
+  const r = Math.max(0, Math.min(1, ratio));
+  departFill.style.width = `${r * 100}%`;
+  departFill.classList.toggle("warn", r <= 0.5 && r > 0.25);
+  departFill.classList.toggle("danger", r <= 0.25);
+}
+
+function showBonus(text) {
+  bonusPop.textContent = text;
+  bonusPop.classList.remove("show");
+  void bonusPop.offsetWidth; // アニメーションを再生し直す
+  bonusPop.classList.add("show");
+}
+
+// 発車時刻を過ぎた: 乗り遅れとして答えを見せて次へ(時間のペナルティはなし、コンボは途切れる)
+function missTrain() {
+  if (!state.playing || state.locked) return;
+  const s = stationById[state.current];
+  state.locked = true;
+  state.missedTrains++;
+  resetCombo();
+  clearPulse();
+  markerEl(s.id).classList.remove("active");
+  markerEl(s.id).classList.add("pass-flash");
+  revealAnswer(s);
+  hintEl.textContent = `乗り遅れ！ 答え: ${s.kana}`;
+  hintEl.classList.add("answer");
+  updateDepartBar(0);
+  setTimeout(() => {
+    if (state.playing) nextQuestion();
+  }, 900);
+}
+
+function rankOf(points) {
+  return RANKS.find(([, min]) => points >= min)[0];
 }
 
 function updateProgress() {
@@ -341,6 +425,8 @@ function currentRemainingMs() {
 function updateStats() {
   scoreLabel.textContent = state.score;
   missLabel.textContent = state.miss;
+  pointsLabel.textContent = state.points.toLocaleString();
+  comboLabel.textContent = state.combo;
   if (state.mode === "challenge") {
     const remain = Math.max(0, currentRemainingMs()) / 1000;
     timeLabel.textContent = remain.toFixed(2);
@@ -357,6 +443,11 @@ function tick() {
   if (state.mode === "challenge" && currentRemainingMs() <= 0) {
     finishGame();
     return;
+  }
+  if (state.mode === "challenge" && !state.locked && state.current) {
+    const left = state.qLimitMs - (performance.now() - state.qStart);
+    updateDepartBar(left / state.qLimitMs);
+    if (left <= 0) missTrain();
   }
   state.timerHandle = requestAnimationFrame(tick);
 }
@@ -395,16 +486,24 @@ function finishGame() {
       resultBest.textContent = `自己ベスト(${kindLabel}): ${prevBest.toFixed(2)}秒`;
     }
   } else {
-    resultTitle.textContent = "タイムアップ！";
+    // 実際に遊んだ時間(コンボで延長した分を含む)で平均打鍵速度を出す
+    const playedSec = Math.max(1, (performance.now() - state.startTime) / 1000);
+    const rank = rankOf(state.points);
+    resultTitle.textContent = `タイムアップ！ ランク ${rank}`;
     resultDetail.textContent =
-      `正解数: ${state.score}駅\n` +
-      `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回\n` +
-      `ミスタイプ: ${state.miss}回 / 正確率: ${accuracyText()}`;
-    if (prevBest === null || state.score > prevBest) {
-      storageSet(key, state.score);
+      `得点: ${state.points.toLocaleString()}点\n` +
+      `正解: ${state.score}駅 / 乗り遅れ: ${state.missedTrains}駅\n` +
+      `打鍵数: ${state.typed} / 平均 ${(state.typed / playedSec).toFixed(1)} 打/秒\n` +
+      `最大コンボ: ${state.maxCombo} / ボーナス +${state.bonusSec}秒\n` +
+      `ミスタイプ: ${state.miss}回 / 正確率: ${accuracyText()}\n` +
+      `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回`;
+    const scoreKey = bestKey("challengeScore", state.showKanji);
+    const prevScore = storageGet(scoreKey, null);
+    if (prevScore === null || state.points > prevScore) {
+      storageSet(scoreKey, state.points);
       resultBest.textContent = `🎉 自己ベスト更新！(${kindLabel})`;
     } else {
-      resultBest.textContent = `自己ベスト(${kindLabel}): ${prevBest}駅`;
+      resultBest.textContent = `自己ベスト(${kindLabel}): ${prevScore.toLocaleString()}点`;
     }
   }
   renderBestList();
@@ -425,6 +524,19 @@ function handleCorrect() {
   c.classList.remove("active");
   c.classList.add("correct-flash", "done");
   state.score++;
+  if (state.mode === "challenge") {
+    // ミスもヒントもなく正解したときだけコンボが続く
+    if (state.qMiss === 0 && !state.qHint) {
+      state.combo++;
+      state.maxCombo = Math.max(state.maxCombo, state.combo);
+      if (state.combo % COMBO_STEP === 0) {
+        state.penaltyMs -= COMBO_BONUS_SEC * 1000;
+        state.bonusSec += COMBO_BONUS_SEC;
+        showBonus(`${state.combo}コンボ！ +${COMBO_BONUS_SEC}秒`);
+      }
+    }
+    state.points += Math.round(POINTS_PER_STATION * comboMultiplier(state.combo));
+  }
   updateProgress();
   revealAnswer(s);
   setTimeout(() => {
@@ -441,6 +553,8 @@ function useHint() {
     " " + "・".repeat(Math.max(0, s.kana.length - state.revealedHintChars));
   state.hintCount++;
   state.penaltyMs += HINT_PENALTY * 1000;
+  state.qHint = true;
+  resetCombo();
 }
 
 // パス: 答えを見せて次へ。全駅制覇モードでは後でもう一度出題される
@@ -450,6 +564,7 @@ function pass() {
   state.locked = true;
   state.passCount++;
   state.penaltyMs += PASS_PENALTY * 1000;
+  resetCombo();
   if (state.mode === "complete") {
     const pos = Math.floor(Math.random() * (state.pool.length + 1));
     state.pool.splice(pos, 0, s.id);
@@ -495,13 +610,19 @@ function applyTyped(val) {
   if (result === 0) {
     // 誤入力は入力欄に残さず、ミスとして数える
     state.miss++;
+    state.qMiss++;
+    if (state.mode === "challenge") resetCombo();
     missLabel.textContent = state.miss;
     inputEl.value = state.lastValid;
     flashInvalid();
     return;
   }
 
-  if (val.length > state.lastValid.length) state.typed += val.length - state.lastValid.length;
+  if (val.length > state.lastValid.length) {
+    const added = val.length - state.lastValid.length;
+    state.typed += added;
+    if (state.mode === "challenge") state.points += Math.round(added * POINTS_PER_KEY * comboMultiplier(state.combo));
+  }
   state.lastValid = val;
   inputEl.value = val;
   inputEl.classList.remove("invalid", "shake");
@@ -660,14 +781,26 @@ function clampToViewport(left, top, w, h) {
   ];
 }
 
-function chooseBubbleDir(x, y, w, h) {
-  const obstacles = [
+// 吹き出しを重ねたくない UI(ステータス・凡例・ボタン・出典表示)の画面上の範囲
+function bubbleObstacles() {
+  return [
     document.getElementById("status-bar"),
     document.getElementById("legend"),
     document.getElementById("btn-map-reset"),
     document.querySelector(".leaflet-control-zoom"),
     document.querySelector(".leaflet-control-attribution"),
   ].map(screenRect).filter(Boolean);
+}
+
+// その位置に置くと UI に重なるか、出題中の駅そのものを隠してしまうか
+function bubblePlacementBlocked(left, top, w, h, x, y) {
+  const r = { left, top, right: left + w, bottom: top + h };
+  if (x > r.left - 14 && x < r.right + 14 && y > r.top - 14 && y < r.bottom + 14) return true;
+  return bubbleObstacles().some((o) => rectsOverlap(r, o, 6));
+}
+
+function chooseBubbleDir(x, y, w, h) {
+  const obstacles = bubbleObstacles();
   const mapRect = map.getContainer().getBoundingClientRect();
   const points = STATIONS.filter((st) => st.id !== state.current).map((st) => {
     const p = map.latLngToContainerPoint([st.lat, st.lng]);
@@ -710,7 +843,12 @@ function placeBubble(rechoose) {
 
   if (rechoose) bubbleDir = chooseBubbleDir(x, y, w, h);
   // 画面外にはみ出す場合は画面内に収める
-  const [left, top] = clampToViewport(...bubbleCandidates(x, y, w, h)[bubbleDir], w, h);
+  let [left, top] = clampToViewport(...bubbleCandidates(x, y, w, h)[bubbleDir], w, h);
+  // 地図の移動中でも、今の向きのままだと UI や出題駅に重なるならその場で選び直す
+  if (!rechoose && bubblePlacementBlocked(left, top, w, h, x, y)) {
+    bubbleDir = chooseBubbleDir(x, y, w, h);
+    [left, top] = clampToViewport(...bubbleCandidates(x, y, w, h)[bubbleDir], w, h);
+  }
   playPanel.style.left = `${left}px`;
   playPanel.style.top = `${top}px`;
 

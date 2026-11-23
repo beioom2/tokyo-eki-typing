@@ -268,6 +268,44 @@ main { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
 
 kbd { font-family: inherit; font-size: 0.72rem; padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: #fafbfc; }
 
+/* ---------- 100秒チャレンジ: 得点・コンボ・発車バー ---------- */
+.challenge-only { display: none !important; }
+body.mode-challenge #status-bar .challenge-only { display: flex !important; }
+body.mode-challenge .bubble .challenge-only { display: block !important; }
+#combo-label { font-weight: bold; }
+.mode-desc { margin: 10px 0 0; font-size: 0.78rem; color: var(--muted); }
+
+/* 発車までの残り時間バー(吹き出しの上端) */
+.depart { height: 6px; margin: -2px 0 8px; background: #e9edf1; border-radius: 3px; overflow: hidden; }
+#depart-fill { display: block; height: 100%; width: 100%; background: #2ecc71; border-radius: 3px; }
+#depart-fill.warn { background: var(--active-glow); }
+#depart-fill.danger { background: var(--accent); }
+
+/* コンボで時間が増えたときの表示(ステータスの下にふわっと出す) */
+.bonus-pop {
+  position: absolute;
+  z-index: 1120;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #2ecc71;
+  color: #fff;
+  font-weight: bold;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+.bonus-pop.show { animation: bonus-pop 1.4s ease-out forwards; }
+@keyframes bonus-pop {
+  0% { opacity: 0; transform: translate(-50%, -6px) scale(0.9); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.05); }
+  70% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, 8px); }
+}
+
 /* ---------- 狭い画面 ---------- */
 @media (max-width: 640px) {
   /* 左上の Leaflet ズームボタンと右上の「全体」ボタンを避ける */
