@@ -310,11 +310,49 @@ body.mode-challenge .bubble .challenge-only { display: block !important; }
 /* ---------- 狭い画面 ---------- */
 @media (max-width: 640px) {
   /* 左上の Leaflet ズームボタンと右上の「全体」ボタンを避ける */
-  #status-bar { gap: 10px; padding: 5px 6px 5px 12px; font-size: 0.85rem; left: 54px; right: 70px; transform: none; overflow-x: auto; }
+  #status-bar { gap: 7px; padding: 5px 6px 5px 10px; font-size: 0.85rem; left: 54px; right: 70px; transform: none; overflow-x: auto; }
   #status-bar .stat:first-child { display: none; }
   .help-pop { top: 50px; }
   /* 出典表示が2行に折り返すので、その上に凡例を置く */
   .legend { font-size: 0.68rem; gap: 4px 10px; bottom: 44px; }
+  /* 100秒チャレンジは項目が多く帯に収まらないので、得点で分かる「正解」数は隠す */
+  body.mode-challenge #status-bar .stat:nth-child(3) { display: none; }
   /* スマホではプレイ中は凡例を隠して吹き出しの置き場を確保する(路線は吹き出し内のバッジで分かる) */
   body.playing .legend { display: none; }
+}
+
+/* ---------- タッチ端末(スマホ・タブレット): 出題はキーボードの上に固定したバーで表示 ---------- */
+.touch-actions { display: none; }
+body.touch .bubble {
+  position: fixed;
+  left: 8px !important;
+  right: 8px;
+  top: auto !important;
+  /* --kb: キーボードで隠れた高さ(ページの高さが変わらないブラウザ向けに script.js が設定) */
+  bottom: calc(8px + var(--kb, 0px));
+  width: auto;
+  margin: 0 auto;
+  max-width: 560px;
+  padding: 8px 10px;
+}
+body.touch .bubble .kanji { font-size: 1.45rem; }
+body.touch .bubble .kana-hint { margin: 2px 0 4px; }
+body.touch .touch-actions { display: flex; gap: 8px; margin-top: 6px; }
+body.touch .touch-actions button {
+  flex: 1;
+  padding: 7px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f6f8;
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+body.touch .leader { display: none !important; }
+/* 凡例はプレイ中は隠して出題バーと地図の場所を確保する */
+body.touch.playing .legend { display: none; }
+/* とても狭い画面(360px 前後)では100秒チャレンジの「ミス」も隠す(結果画面で確認できる) */
+@media (max-width: 380px) {
+  body.mode-challenge #status-bar .stat:nth-child(4) { display: none; }
+  /* 全駅制覇は「n / 95 駅」の表示と同じ情報なので「正解」を隠す */
+  body:not(.mode-challenge) #status-bar .stat:nth-child(3) { display: none; }
 }

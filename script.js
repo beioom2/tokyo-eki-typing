@@ -13,6 +13,9 @@ const RANKS = [["S", 15000], ["A", 10000], ["B", 6000], ["C", 3000], ["D", 0]];
 const HINT_PENALTY = 10;
 const PASS_PENALTY = 10;
 const STORAGE_PREFIX = "tokyoEkiTyping.";
+// タッチ操作の端末(スマホ・タブレット)かどうか。入力方式と出題の表示方法を切り替える
+const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
+document.body.classList.toggle("touch", IS_TOUCH);
 
 const stationById = {};
 STATIONS.forEach((s) => { stationById[s.id] = s; });
@@ -107,14 +110,17 @@ const EDGE_MARGIN = { left: 90, right: 90, top: 130, bottom: 190 };
 function keepStationAwayFromEdges(ll) {
   const pt = map.latLngToContainerPoint(ll);
   const size = map.getSize();
+  // スマホでは画面下にキーボードと出題バーが重なるので、実際に見えている範囲の上側に駅を収める
+  const visibleH = IS_TOUCH ? Math.min(size.y, visibleViewportHeight() - playPanel.offsetHeight - 16) : size.y;
+  const edge = IS_TOUCH ? { left: 40, right: 40, top: 70, bottom: 30 } : EDGE_MARGIN;
   const m = {
-    left: Math.min(EDGE_MARGIN.left, size.x / 2),
-    right: Math.min(EDGE_MARGIN.right, size.x / 2),
-    top: Math.min(EDGE_MARGIN.top, size.y / 2),
-    bottom: Math.min(EDGE_MARGIN.bottom, size.y / 2),
+    left: Math.min(edge.left, size.x / 2),
+    right: Math.min(edge.right, size.x / 2),
+    top: Math.min(edge.top, visibleH / 2),
+    bottom: Math.min(edge.bottom, visibleH / 2),
   };
   const dx = pt.x < m.left ? pt.x - m.left : pt.x > size.x - m.right ? pt.x - (size.x - m.right) : 0;
-  const dy = pt.y < m.top ? pt.y - m.top : pt.y > size.y - m.bottom ? pt.y - (size.y - m.bottom) : 0;
+  const dy = pt.y < m.top ? pt.y - m.top : pt.y > visibleH - m.bottom ? pt.y - (visibleH - m.bottom) : 0;
   if (dx || dy) map.panBy([dx, dy], { animate: true });
 }
 
@@ -339,6 +345,7 @@ function nextQuestion() {
   renderLines(s);
   hintEl.textContent = " ";
   hintEl.classList.remove("answer");
+  imeWarnEl.hidden = true; // 前の問題で出た日本語入力の警告は消す
   state.revealedHintChars = 0;
   state.lastValid = "";
   inputEl.value = "";
@@ -656,10 +663,18 @@ function applyTyped(val) {
 // PC: 入力欄を読み取り専用にしてキー押下から直接判定する(ローマ字のみ受け付ける)。
 // IME は編集可能な欄でしか動かないので、日本語入力モードのままでもローマ字で入力できる。
 // スマホ等(タッチ操作)は読み取り専用だとキーボードが出ないため、入力欄で受け付けて日本語は弾く。
-const USE_KEY_INPUT = !window.matchMedia("(pointer: coarse)").matches;
+const USE_KEY_INPUT = !IS_TOUCH;
 if (USE_KEY_INPUT) {
   inputEl.readOnly = true;
   inputEl.classList.add("key-input");
+} else {
+  // URL 用の入力欄にすると、多くのスマホで最初から英字キーボードが出る(日本語キーボードからの切り替えが不要)
+  inputEl.type = "url";
+  inputEl.setAttribute("enterkeyhint", "done");
+}
+
+function isAsciiOnly(str) {
+  return !/[^\x00-\x7F！-～]/.test(str);
 }
 
 // キーイベントから入力文字を取り出す。IME にキーが渡った場合(key が "Process")は物理キーから判定する
@@ -692,7 +707,9 @@ function handleTypingKey(e) {
 
 inputEl.addEventListener("input", (e) => {
   if (USE_KEY_INPUT) return;
-  if (e.isComposing) return; // IME変換中は判定しない
+  // Android のキーボード(Gboard 等)は英字でも予測変換のため「変換中」扱いで入力してくる。
+  // 英数字だけなら変換中でも1文字ずつ判定し、日本語が入っているときだけ確定を待つ。
+  if (e.isComposing && !isAsciiOnly(inputEl.value)) return;
   if (!state.playing || state.locked) {
     inputEl.value = state.lastValid;
     return;
@@ -715,10 +732,13 @@ inputEl.addEventListener("input", (e) => {
 
 inputEl.addEventListener("compositionend", () => {
   if (USE_KEY_INPUT) return;
-  // IMEで確定された文字列は input イベントで弾かれるので、ここでは警告だけ出す
-  if (/[^\x00-\x7F！-～]/.test(inputEl.value)) {
+  // 日本語で確定された場合は警告して取り消す。英数字ならここでも判定する(確定時に input が来ないブラウザ向け)
+  if (!isAsciiOnly(inputEl.value)) {
     imeWarnEl.hidden = false;
     inputEl.value = state.lastValid;
+  } else if (state.playing && !state.locked) {
+    const val = normalizeTyped(inputEl.value);
+    if (val !== state.lastValid && /^[a-z0-9'\-]*$/.test(val)) applyTyped(val);
   }
 });
 
@@ -736,6 +756,8 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Enter") {
     if (e.isComposing) return;
+    // スマホのキーボードの「完了」でヒントが出てしまわないよう、タッチ端末ではヒントは画面のボタンで出す
+    if (state.playing && IS_TOUCH) { e.preventDefault(); return; }
     if (state.playing) {
       e.preventDefault();
       useHint();
@@ -760,9 +782,45 @@ document.getElementById("btn-menu").addEventListener("click", () => {
 });
 
 // 地図をドラッグ・ズームした後も入力を続けられるようにする
-map.on("click", () => { if (state.playing) inputEl.focus(); });
-map.on("moveend", () => { if (state.playing && document.activeElement !== inputEl) inputEl.focus({ preventScroll: true }); });
+// (スマホでは地図を動かすたびにキーボードが開閉しないよう、タップしたときだけ入力欄に戻す)
+map.on("click", () => { if (state.playing && document.activeElement !== inputEl) inputEl.focus(); });
+map.on("moveend", () => {
+  if (!IS_TOUCH && state.playing && document.activeElement !== inputEl) inputEl.focus({ preventScroll: true });
+});
 playPanel.addEventListener("click", () => inputEl.focus());
+
+// ---------- スマホ: ヒント・パスのボタンと、キーボードに合わせた出題バーの位置 ----------
+function bindTouchButton(id, action) {
+  const btn = document.getElementById(id);
+  // pointerdown を止めると入力欄からフォーカスが外れず、キーボードが閉じない
+  btn.addEventListener("pointerdown", (e) => e.preventDefault());
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    action();
+    inputEl.focus({ preventScroll: true });
+  });
+}
+bindTouchButton("btn-touch-hint", () => useHint());
+bindTouchButton("btn-touch-pass", () => pass());
+
+function visibleViewportHeight() {
+  return window.visualViewport ? window.visualViewport.height : window.innerHeight;
+}
+
+// iOS などキーボードが開いてもページの高さが変わらないブラウザでは、隠れた高さ分だけ出題バーを持ち上げる
+function updateKeyboardInset() {
+  const vv = window.visualViewport;
+  const inset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  document.documentElement.style.setProperty("--kb", `${Math.round(inset)}px`);
+  if (IS_TOUCH && state.playing && state.current) {
+    const s = stationById[state.current];
+    keepStationAwayFromEdges(L.latLng(s.lat, s.lng));
+  }
+}
+if (IS_TOUCH && window.visualViewport) {
+  window.visualViewport.addEventListener("resize", updateKeyboardInset);
+  window.visualViewport.addEventListener("scroll", updateKeyboardInset);
+}
 
 // ---------- 出題の吹き出し ----------
 // 出題中の駅の近くに吹き出しを出し、引き出し線で駅とつなぐ。
@@ -852,7 +910,8 @@ function chooseBubbleDir(x, y, w, h) {
 // rechoose: true のときは向きを選び直す(新しい問題・ズーム・移動終了時)。
 // ドラッグ中は向きを固定したまま位置だけ追従させ、吹き出しが飛び回らないようにする。
 function placeBubble(rechoose) {
-  if (playPanel.hidden || !state.playing || !state.current) {
+  // スマホでは吹き出しではなく、画面下(キーボードの上)に固定したバーとして CSS で配置する
+  if (IS_TOUCH || playPanel.hidden || !state.playing || !state.current) {
     leaderEl.hidden = true;
     return;
   }

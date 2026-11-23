@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
 <title>東京駅名当てタイピング</title>
 <meta name="description" content="実際の東京の地図で光った駅の名前をローマ字で当てるタイピングゲーム。JR・東京メトロ全9路線など95駅を収録。全駅制覇モードと、発車タイマー・コンボで競う100秒チャレンジ。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚃</text></svg>">
@@ -86,6 +86,11 @@
       <div class="kana-hint" id="current-hint">&nbsp;</div>
       <input id="typing-input" type="text" lang="en" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ローマ字で入力...">
       <p class="ime-warning" id="ime-warning" hidden>日本語入力(IME)をオフにして、半角英字で入力してください</p>
+      <!-- スマホ用: Enter/Esc キーの代わり -->
+      <div class="touch-actions">
+        <button type="button" id="btn-touch-hint">ヒント(+10秒)</button>
+        <button type="button" id="btn-touch-pass">パス(+10秒)</button>
+      </div>
     </div>
 
     <!-- リザルト(中央のカード) -->
