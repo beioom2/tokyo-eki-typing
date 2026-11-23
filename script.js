@@ -521,17 +521,14 @@ function finishGame() {
 // ---------- X(旧 Twitter)でシェア ----------
 // 投稿画面(Web インテント)を新しいタブで開くだけなので、トークンやサーバーは不要
 const GAME_TITLE = "東京駅名当てタイピング";
-const SHARE_URL = "https://beioom2.github.io/tokyo-eki-typing/";
+const SHARE_URL = "https://beioom2.github.io/tokyo-eki-typing/"; // 投稿文に載せるゲームの公開 URL
 const SHARE_HASHTAGS = ["東京駅名当てタイピング", "タイピング"];
-const SITE_URL = "https://adachi-taiki.com/"; // 作者のサイト(投稿文の末尾に載せる)
 
 function shareToX() {
   if (!state.shareText) return;
-  // GitHub Pages などで公開中ならそのページの URL、ローカルで開いているときは公開版の URL を載せる
-  const url = /^https?:$/.test(location.protocol) ? location.origin + location.pathname : SHARE_URL;
-  const text = `${state.shareText}
-作者サイト: ${SITE_URL}`;
-  const params = new URLSearchParams({ text, url, hashtags: SHARE_HASHTAGS.join(",") });
+  // ゲームの URL は本文に直接書く(url パラメータだと末尾に付くだけで分かりにくいため使わない)
+  const text = `${state.shareText}\nプレイはこちら👉 ${SHARE_URL}`;
+  const params = new URLSearchParams({ text, hashtags: SHARE_HASHTAGS.join(",") });
   window.open(`https://x.com/intent/post?${params}`, "_blank", "noopener,noreferrer");
 }
 document.getElementById("btn-share").addEventListener("click", shareToX);
