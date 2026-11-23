@@ -1,9 +1,5 @@
 // 東京 駅名当てタイピングゲーム - ゲームロジック
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-const CENTER = { x: 400, y: 400 };
-const RX = 260;
-const RY = 300;
 const CHALLENGE_SECONDS = 100;
 const HINT_PENALTY = 10;
 const PASS_PENALTY = 10;
@@ -11,14 +7,6 @@ const STORAGE_PREFIX = "tokyoEkiTyping.";
 
 const stationById = {};
 STATIONS.forEach((s) => { stationById[s.id] = s; });
-
-function computePosition(station) {
-  const rad = (station.angle * Math.PI) / 180;
-  const x = CENTER.x + RX * station.radius * Math.sin(rad);
-  const y = CENTER.y - RY * station.radius * Math.cos(rad);
-  return { x, y };
-}
-STATIONS.forEach((s) => { const p = computePosition(s); s.x = p.x; s.y = p.y; });
 
 // ---------- localStorage(使えない環境でも動くように) ----------
 function storageGet(key, fallback) {
@@ -31,52 +19,121 @@ function storageSet(key, value) {
   try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch (e) { /* noop */ }
 }
 
-// ---------- 地図描画 ----------
-const mapEl = document.getElementById("map");
+// ---------- 地図描画(Leaflet + 地名ラベルなしの地図タイル) ----------
+// 背景地図に駅名が出ると答えが分かってしまうため、ラベルなしの Esri World Light Gray Base を使う
 const legendEl = document.getElementById("legend");
-const circleById = {};
-const labelLayer = document.createElementNS(SVG_NS, "g");
+const markerById = {};
+const mapLabels = []; // { tip, timer }
+let pulseMarker = null;
+
+const map = L.map("map", {
+  keyboard: false, // 入力欄でのタイピングと競合させない
+  zoomSnap: 0.25,
+  minZoom: 10,
+  maxZoom: 17,
+});
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+  maxNativeZoom: 16,
+  maxZoom: 19,
+  attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ ／ 駅位置 &copy; OpenStreetMap contributors",
+}).addTo(map);
+
+const allBounds = L.latLngBounds(STATIONS.map((s) => [s.lat, s.lng]));
+
+// ズームに応じて駅の丸の大きさを変える(引いたときに重なりすぎないように)
+function stationRadius(s) {
+  const base = s.lines.length > 1 ? 7 : 5;
+  const z = map.getZoom();
+  const scale = z <= 12 ? 0.7 : z <= 13 ? 0.85 : 1;
+  return base * scale;
+}
+
+function markerEl(id) {
+  return markerById[id].getElement();
+}
 
 function buildMap() {
   LINES.forEach((line) => {
-    const pts = line.order.map((id) => stationById[id]);
-    let d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-    if (line.closed) d += " Z";
-    const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", d);
-    path.setAttribute("class", "line-path");
-    path.setAttribute("stroke", LINE_COLORS[line.id]);
-    mapEl.appendChild(path);
+    const pts = line.order.map((id) => [stationById[id].lat, stationById[id].lng]);
+    const opts = { color: LINE_COLORS[line.id], weight: 5, opacity: 0.85, lineCap: "round", lineJoin: "round", interactive: false };
+    (line.closed ? L.polygon(pts, { ...opts, fill: false }) : L.polyline(pts, opts)).addTo(map);
   });
+
+  map.fitBounds(allBounds, { padding: [16, 16] });
 
   STATIONS.forEach((s) => {
-    const c = document.createElementNS(SVG_NS, "circle");
-    c.setAttribute("cx", s.x.toFixed(1));
-    c.setAttribute("cy", s.y.toFixed(1));
-    c.setAttribute("r", s.lines.length > 1 ? 8 : 6);
-    c.setAttribute("class", "station-dot" + (s.lines.length > 1 ? " interchange" : ""));
-    mapEl.appendChild(c);
-    circleById[s.id] = c;
+    const m = L.circleMarker([s.lat, s.lng], {
+      radius: stationRadius(s),
+      weight: s.lines.length > 1 ? 3 : 2,
+      color: "#4a5568",
+      fillColor: "#ffffff",
+      fillOpacity: 1,
+      interactive: false,
+      className: "station-dot" + (s.lines.length > 1 ? " interchange" : ""),
+    }).addTo(map);
+    markerById[s.id] = m;
   });
 
-  mapEl.appendChild(labelLayer);
+  map.on("zoomend", () => {
+    STATIONS.forEach((s) => markerById[s.id].setRadius(stationRadius(s)));
+  });
 
   LINES.forEach((line) => {
     const li = document.createElement("li");
     li.innerHTML = `<span class="swatch" style="background:${LINE_COLORS[line.id]}"></span>${LINE_NAMES[line.id]}`;
     legendEl.appendChild(li);
   });
+
+  const resetBtn = document.getElementById("btn-map-reset");
+  resetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    map.fitBounds(allBounds, { padding: [16, 16] });
+    if (state.playing) inputEl.focus();
+  });
+}
+
+// 出題中の駅を目立たせる(脈打つリング)。画面外ならその駅まで地図を動かす
+function setPulse(s) {
+  clearPulse();
+  const ll = L.latLng(s.lat, s.lng);
+  pulseMarker = L.marker(ll, {
+    icon: L.divIcon({ className: "pulse-icon", html: "<span></span>", iconSize: [34, 34] }),
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 1000,
+  }).addTo(map);
+  if (!map.getBounds().pad(-0.08).contains(ll)) map.panTo(ll, { animate: true });
+}
+
+function clearPulse() {
+  if (pulseMarker) { pulseMarker.remove(); pulseMarker = null; }
 }
 
 // 正解した駅の名前を地図上に一瞬表示する
 function showMapLabel(s) {
-  const text = document.createElementNS(SVG_NS, "text");
-  text.setAttribute("x", s.x.toFixed(1));
-  text.setAttribute("y", (s.y - 16).toFixed(1));
-  text.setAttribute("class", "map-label");
-  text.textContent = s.kanji;
-  labelLayer.appendChild(text);
-  setTimeout(() => text.remove(), 1200);
+  const tip = L.tooltip({ permanent: true, direction: "top", offset: [0, -8], className: "map-label" })
+    .setLatLng([s.lat, s.lng])
+    .setContent(s.kanji)
+    .addTo(map);
+  const entry = { tip, timer: null };
+  entry.timer = setTimeout(() => {
+    hideAndRemoveTip(tip);
+    const i = mapLabels.indexOf(entry);
+    if (i >= 0) mapLabels.splice(i, 1);
+  }, 1200);
+  mapLabels.push(entry);
+}
+
+// Leaflet は削除時に 200ms かけてフェードするが、CSS アニメーションが透明度を上書きするので先に隠す
+function hideAndRemoveTip(tip) {
+  const el = tip.getElement();
+  if (el) el.classList.add("gone");
+  tip.remove();
+}
+
+function clearMapLabels() {
+  mapLabels.forEach(({ tip, timer }) => { clearTimeout(timer); hideAndRemoveTip(tip); });
+  mapLabels.length = 0;
 }
 
 function buildStationListReference() {
@@ -171,8 +228,8 @@ renderBestList();
 
 function startGame(mode) {
   clearActiveHighlight();
-  Object.values(circleById).forEach((c) => c.classList.remove("done"));
-  labelLayer.replaceChildren();
+  STATIONS.forEach((st) => markerEl(st.id).classList.remove("done"));
+  clearMapLabels();
 
   state.mode = mode;
   state.showKanji = showKanjiEl.checked;
@@ -201,7 +258,8 @@ function startGame(mode) {
 }
 
 function clearActiveHighlight() {
-  Object.values(circleById).forEach((c) => c.classList.remove("active", "correct-flash", "pass-flash"));
+  STATIONS.forEach((st) => markerEl(st.id).classList.remove("active", "correct-flash", "pass-flash"));
+  clearPulse();
 }
 
 function renderLines(s) {
@@ -238,7 +296,9 @@ function nextQuestion() {
   state.lastValid = "";
   inputEl.value = "";
   inputEl.classList.remove("valid", "invalid", "shake");
-  circleById[state.current].classList.add("active");
+  markerEl(state.current).classList.add("active");
+  markerById[state.current].bringToFront();
+  setPulse(s);
   state.locked = false;
   updateProgress();
 }
@@ -338,8 +398,9 @@ function revealAnswer(s) {
 
 function handleCorrect() {
   const s = stationById[state.current];
-  const c = circleById[state.current];
+  const c = markerEl(state.current);
   state.locked = true;
+  clearPulse();
   c.classList.remove("active");
   c.classList.add("correct-flash", "done");
   state.score++;
@@ -372,8 +433,9 @@ function pass() {
     const pos = Math.floor(Math.random() * (state.pool.length + 1));
     state.pool.splice(pos, 0, s.id);
   }
-  circleById[s.id].classList.remove("active");
-  circleById[s.id].classList.add("pass-flash");
+  clearPulse();
+  markerEl(s.id).classList.remove("active");
+  markerEl(s.id).classList.add("pass-flash");
   revealAnswer(s);
   hintEl.textContent = `答え: ${s.kana}`;
   hintEl.classList.add("answer");
@@ -485,5 +547,7 @@ document.getElementById("btn-menu").addEventListener("click", () => {
   idlePanel.hidden = false;
 });
 
-document.getElementById("map-wrap").addEventListener("click", () => { if (state.playing) inputEl.focus(); });
+// 地図をドラッグ・ズームした後も入力を続けられるようにする
+map.on("click", () => { if (state.playing) inputEl.focus(); });
+map.on("moveend", () => { if (state.playing && document.activeElement !== inputEl) inputEl.focus({ preventScroll: true }); });
 playPanel.addEventListener("click", () => inputEl.focus());

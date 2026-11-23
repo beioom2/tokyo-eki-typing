@@ -47,40 +47,51 @@ main {
   max-width: 560px;
 }
 
-#map-wrap { width: 100%; aspect-ratio: 1 / 1; }
-#map { width: 100%; height: 100%; }
+#map-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; overflow: hidden; }
+#map { width: 100%; height: 100%; background: #eef1f4; }
 
+.map-reset {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 1000;
+  background: #fff;
+  border: 2px solid rgba(0,0,0,0.2);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.map-reset:hover { background: #f4f4f4; }
+
+/* 駅の丸(Leaflet の circleMarker に付くクラス。CSS が属性より優先される) */
 .station-dot {
   stroke: var(--station-stroke);
-  stroke-width: 2;
   fill: var(--station-fill);
-  transition: r 0.15s ease, fill 0.15s ease;
-}
-.station-dot.interchange {
-  stroke-width: 3;
-  r: 8;
+  transition: fill 0.15s ease, stroke 0.15s ease;
 }
 .station-dot.active {
   fill: var(--active-glow);
   stroke: #b3410f;
-  animation: pulse 0.9s ease-in-out infinite;
 }
 .station-dot.correct-flash {
   fill: #2ecc71 !important;
   stroke: #1e8449 !important;
 }
 
-@keyframes pulse {
-  0%, 100% { r: 9; filter: drop-shadow(0 0 2px var(--active-glow)); }
-  50% { r: 13; filter: drop-shadow(0 0 8px var(--active-glow)); }
+/* 出題中の駅の脈打つリング */
+.pulse-icon span {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--active-glow);
+  box-shadow: 0 0 10px var(--active-glow);
+  animation: pulse-ring 0.9s ease-in-out infinite;
 }
-
-.line-path {
-  fill: none;
-  stroke-width: 5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.85;
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(0.55); opacity: 1; }
+  50% { transform: scale(1); opacity: 0.55; }
 }
 
 .legend {
@@ -190,21 +201,17 @@ footer {
 
 .station-dot.done { fill: #c8efd6; stroke: #2e9e5b; }
 .station-dot.pass-flash { fill: var(--accent) !important; stroke: #9b1c26 !important; }
-.map-label {
-  font-size: 18px;
+.leaflet-tooltip.map-label {
+  font-size: 15px;
   font-weight: bold;
-  text-anchor: middle;
-  fill: var(--ink);
-  paint-order: stroke;
-  stroke: #fff;
-  stroke-width: 4px;
-  pointer-events: none;
-  transform-box: fill-box;
+  color: var(--ink);
+  padding: 2px 8px;
   animation: label-fade 1.2s ease-out forwards;
 }
+.leaflet-tooltip.map-label.gone { display: none; }
 @keyframes label-fade {
-  0% { opacity: 0; transform: translateY(4px); }
-  15% { opacity: 1; transform: translateY(0); }
+  0% { opacity: 0; }
+  15% { opacity: 1; }
   75% { opacity: 1; }
   100% { opacity: 0; }
 }

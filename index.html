@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>東京駅名当てタイピング</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,7 +16,8 @@
   <main>
     <section class="map-panel">
       <div id="map-wrap">
-        <svg id="map" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="map" aria-label="東京の路線図"></div>
+        <button type="button" id="btn-map-reset" class="map-reset" title="全体を表示">全体</button>
       </div>
       <ul id="legend" class="legend"></ul>
     </section>
@@ -73,9 +75,10 @@
       <summary>収録駅一覧(路線別・参考)</summary>
       <div id="station-list"></div>
     </details>
-    <p class="note">※路線図は実際の地理座標ではなく、覚えやすさを優先した簡略化した模式図です。</p>
+    <p class="note">※駅の位置は実際の緯度経度です(駅データ: © OpenStreetMap contributors)。路線は駅同士を直線で結んだ簡略表示で、実際の線路の経路ではありません。地図はホイールやピンチでズーム、ドラッグで移動できます。</p>
   </footer>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="data.js"></script>
   <script src="romaji.js"></script>
   <script src="script.js"></script>
