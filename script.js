@@ -463,30 +463,13 @@ function flashInvalid() {
   inputEl.classList.add("shake");
 }
 
-inputEl.addEventListener("input", (e) => {
-  if (e.isComposing) return; // IME変換中は判定しない
-  if (!state.playing || state.locked) {
-    inputEl.value = state.lastValid;
-    return;
-  }
-  const raw = inputEl.value;
-  const val = normalizeTyped(raw);
-
-  // 英数字以外(日本語入力など)が含まれていたら警告して取り消す
-  if (/[^a-z0-9'\-]/.test(val)) {
-    imeWarnEl.hidden = false;
-    inputEl.value = state.lastValid;
-    return;
-  }
-  imeWarnEl.hidden = true;
-
-  if (val === state.lastValid) {
-    inputEl.value = val;
-    return;
-  }
+// 入力文字列 val を判定して反映する(キー入力方式・入力欄方式で共通)
+function applyTyped(val) {
+  if (!state.playing || state.locked) return;
+  if (val === state.lastValid) return;
 
   const s = stationById[state.current];
-  const result = judge(s, val);
+  const result = val.length === 0 ? 1 : judge(s, val);
 
   if (result === 0) {
     // 誤入力は入力欄に残さず、ミスとして数える
@@ -501,11 +484,72 @@ inputEl.addEventListener("input", (e) => {
   state.lastValid = val;
   inputEl.value = val;
   inputEl.classList.remove("invalid", "shake");
-  inputEl.classList.add("valid");
+  inputEl.classList.toggle("valid", val.length > 0);
   if (result === 2) handleCorrect();
+}
+
+// PC: 入力欄を読み取り専用にしてキー押下から直接判定する(ローマ字のみ受け付ける)。
+// IME は編集可能な欄でしか動かないので、日本語入力モードのままでもローマ字で入力できる。
+// スマホ等(タッチ操作)は読み取り専用だとキーボードが出ないため、入力欄で受け付けて日本語は弾く。
+const USE_KEY_INPUT = !window.matchMedia("(pointer: coarse)").matches;
+if (USE_KEY_INPUT) {
+  inputEl.readOnly = true;
+  inputEl.classList.add("key-input");
+}
+
+// キーイベントから入力文字を取り出す。IME にキーが渡った場合(key が "Process")は物理キーから判定する
+function keyToChar(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  let ch = null;
+  if (e.key && e.key.length === 1) {
+    ch = normalizeTyped(e.key);
+  } else if (e.key === "Process" || e.key === "Unidentified") {
+    const m = /^Key([A-Z])$/.exec(e.code) || /^Digit(\d)$/.exec(e.code);
+    if (m) ch = m[1].toLowerCase();
+    else if (e.code === "Minus") ch = "-";
+  }
+  return ch && /^[a-z0-9'\-]$/.test(ch) ? ch : null;
+}
+
+function handleTypingKey(e) {
+  if (e.key === "Backspace") {
+    e.preventDefault();
+    applyTyped(state.lastValid.slice(0, -1));
+    return true;
+  }
+  const ch = keyToChar(e);
+  if (!ch) return false;
+  e.preventDefault();
+  imeWarnEl.hidden = true;
+  applyTyped(state.lastValid + ch);
+  return true;
+}
+
+inputEl.addEventListener("input", (e) => {
+  if (USE_KEY_INPUT) return;
+  if (e.isComposing) return; // IME変換中は判定しない
+  if (!state.playing || state.locked) {
+    inputEl.value = state.lastValid;
+    return;
+  }
+  const val = normalizeTyped(inputEl.value);
+
+  // 英数字以外(日本語入力など)が含まれていたら警告して取り消す
+  if (/[^a-z0-9'\-]/.test(val)) {
+    imeWarnEl.hidden = false;
+    inputEl.value = state.lastValid;
+    return;
+  }
+  imeWarnEl.hidden = true;
+  if (val === state.lastValid) {
+    inputEl.value = val;
+    return;
+  }
+  applyTyped(val);
 });
 
 inputEl.addEventListener("compositionend", () => {
+  if (USE_KEY_INPUT) return;
   // IMEで確定された文字列は input イベントで弾かれるので、ここでは警告だけ出す
   if (/[^\x00-\x7F！-～]/.test(inputEl.value)) {
     imeWarnEl.hidden = false;
@@ -515,6 +559,9 @@ inputEl.addEventListener("compositionend", () => {
 
 // ---------- キー操作 ----------
 document.addEventListener("keydown", (e) => {
+  // プレイ中は入力欄にフォーカスがなくてもタイピングを受け付ける
+  if (USE_KEY_INPUT && state.playing && handleTypingKey(e)) return;
+
   const onButton = e.target instanceof HTMLButtonElement;
   const onCheckbox = e.target instanceof HTMLInputElement && e.target.type === "checkbox";
 
