@@ -356,3 +356,36 @@ body.touch.playing .legend { display: none; }
   /* 全駅制覇は「n / 95 駅」の表示と同じ情報なので「正解」を隠す */
   body:not(.mode-challenge) #status-bar .stat:nth-child(3) { display: none; }
 }
+
+/* ---------- スマホ版: 4択クイズ ---------- */
+.choices, .quiz-note { display: none; }
+body.touch .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+body.touch .quiz-note { display: block; margin: 0 0 8px; font-size: 0.85rem; }
+/* スマホでは文字入力をしないので、入力欄と「駅名を表示する」の切り替えは出さない */
+body.touch #typing-input, body.touch .ime-warning, body.touch .option { display: none !important; }
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 6px 4px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+.choice:active { background: #f0f2f5; }
+.choice-kanji { font-size: 1.05rem; font-weight: bold; line-height: 1.2; }
+.choice-kana { font-size: 0.68rem; color: var(--muted); }
+.choice.correct, .choice.reveal { border-color: #2ecc71; background: #e9f9ef; }
+.choice.wrong { border-color: var(--accent); background: #fff0f1; }
+.choice.eliminated { opacity: 0.3; text-decoration: line-through; }
+.choice:disabled { cursor: default; }
+/* PC 向けの説明(キーボード操作など)はスマホでは出さない */
+body.touch .pc-only { display: none !important; }
+.touch-only { display: none; }
+body.touch .touch-only { display: block; }

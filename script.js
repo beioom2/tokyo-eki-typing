@@ -10,12 +10,21 @@ const COMBO_BONUS_SEC = 3;
 const POINTS_PER_KEY = 10;
 const POINTS_PER_STATION = 50;
 const RANKS = [["S", 15000], ["A", 10000], ["B", 6000], ["C", 3000], ["D", 0]];
+// スマホ版(4択クイズ)の100秒チャレンジ
+const QUIZ_DEPART_SEC = 6; // 1問の制限時間
+const QUIZ_POINTS_PER_STATION = 100; // 正解の基本点
+const QUIZ_SPEED_BONUS_MAX = 100; // 早く答えるほど増えるボーナス(残り時間の割合 × この値)
+const QUIZ_CHOICES = 4;
+const QUIZ_NEIGHBOR_POOL = 10; // 不正解の選択肢は出題駅に近いこの数の駅から選ぶ
+const QUIZ_RANKS = [["S", 12000], ["A", 8000], ["B", 5000], ["C", 2500], ["D", 0]];
 const HINT_PENALTY = 10;
 const PASS_PENALTY = 10;
 const STORAGE_PREFIX = "tokyoEkiTyping.";
 // タッチ操作の端末(スマホ・タブレット)かどうか。入力方式と出題の表示方法を切り替える
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
 document.body.classList.toggle("touch", IS_TOUCH);
+// スマホ版は文字入力の代わりに4択クイズ。駅名(漢字)は常に隠す
+const QUIZ_MODE = IS_TOUCH;
 
 const stationById = {};
 STATIONS.forEach((s) => { stationById[s.id] = s; });
@@ -134,7 +143,21 @@ function setPulse(s) {
     keyboard: false,
     zIndexOffset: 1000,
   }).addTo(map);
-  keepStationAwayFromEdges(ll);
+  if (QUIZ_MODE) focusQuizStation(ll);
+  else keepStationAwayFromEdges(ll);
+}
+
+// スマホ版(4択): 選択肢は近所の駅同士なので、出題駅を中心にズームして周りとの位置関係を見せる。
+// 駅は出題バーに隠れない「見えている範囲」の中央に置く。ユーザーがもっと拡大していればその倍率を保つ
+const QUIZ_MIN_ZOOM = 12.5;
+function focusQuizStation(ll) {
+  const zoom = Math.max(map.getZoom(), QUIZ_MIN_ZOOM);
+  const size = map.getSize();
+  const visibleH = Math.min(size.y, visibleViewportHeight() - playPanel.offsetHeight - 16);
+  const statusBottom = 56; // 上部のステータス表示の下端
+  const targetY = statusBottom + (visibleH - statusBottom) / 2; // 駅を置きたい画面上の高さ
+  const center = map.unproject(map.project(ll, zoom).add([0, size.y / 2 - targetY]), zoom);
+  map.setView(center, zoom, { animate: true });
 }
 
 function clearPulse() {
@@ -263,6 +286,14 @@ function bestKey(mode, showKanji) {
 }
 
 function renderBestList() {
+  if (QUIZ_MODE) {
+    const c = storageGet("best.quizComplete", null);
+    const ch = storageGet("best.quizChallenge", null);
+    bestListEl.textContent =
+      `自己ベスト(スマホ4択): ` +
+      `全駅制覇 ${c !== null ? c.toFixed(2) + "秒" : "-"} / 100秒 ${ch !== null ? ch.toLocaleString() + "点" : "-"}`;
+    return;
+  }
   const sk = showKanjiEl.checked;
   const c = storageGet(bestKey("complete", sk), null);
   const ch = storageGet(bestKey("challengeScore", sk), null);
@@ -278,7 +309,7 @@ function startGame(mode) {
   clearMapLabels();
 
   state.mode = mode;
-  state.showKanji = showKanjiEl.checked;
+  state.showKanji = QUIZ_MODE ? false : showKanjiEl.checked;
   state.playing = true;
   document.body.classList.add("playing");
   state.locked = false;
@@ -295,6 +326,8 @@ function startGame(mode) {
   state.maxCombo = 0;
   state.bonusSec = 0;
   state.missedTrains = 0;
+  state.wrong = 0;
+  state.answerMsTotal = 0;
   state.startTime = performance.now();
   document.body.classList.toggle("mode-challenge", mode === "challenge");
 
@@ -356,15 +389,108 @@ function nextQuestion() {
   state.locked = false;
   state.qMiss = 0;
   state.qHint = false;
+  state.qStart = performance.now();
+  if (QUIZ_MODE) renderChoices(s);
   if (state.mode === "challenge") {
     const keys = Math.min(...s.romaji.map((r) => r.length));
-    const sec = DEPART_BASE_SEC + DEPART_PER_KEY_SEC * keys + (state.showKanji ? 0 : DEPART_MAPONLY_EXTRA_SEC);
+    const sec = QUIZ_MODE
+      ? QUIZ_DEPART_SEC
+      : DEPART_BASE_SEC + DEPART_PER_KEY_SEC * keys + (state.showKanji ? 0 : DEPART_MAPONLY_EXTRA_SEC);
     state.qLimitMs = sec * 1000;
-    state.qStart = performance.now();
     updateDepartBar(1);
   }
   updateProgress();
   placeBubble(true);
+}
+
+// ---------- スマホ版: 4択クイズ ----------
+const choicesEl = document.getElementById("choices");
+
+// 出題駅に近い駅を不正解の候補にする(近所の駅が並ぶので地図をよく見ないと迷う)
+function quizChoices(s) {
+  const dist = (a) => (a.lat - s.lat) ** 2 + ((a.lng - s.lng) * Math.cos((s.lat * Math.PI) / 180)) ** 2;
+  const near = STATIONS.filter((st) => st.id !== s.id).sort((a, b) => dist(a) - dist(b)).slice(0, QUIZ_NEIGHBOR_POOL);
+  const picked = shuffle(near).slice(0, QUIZ_CHOICES - 1);
+  return shuffle([s, ...picked]);
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function renderChoices(s) {
+  choicesEl.replaceChildren();
+  quizChoices(s).forEach((st) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "choice";
+    btn.dataset.id = st.id;
+    btn.innerHTML = `<span class="choice-kanji"></span><span class="choice-kana"></span>`;
+    btn.querySelector(".choice-kanji").textContent = st.kanji;
+    btn.querySelector(".choice-kana").textContent = st.kana;
+    btn.addEventListener("click", () => chooseAnswer(st.id, btn));
+    choicesEl.appendChild(btn);
+  });
+}
+
+function choiceButton(id) {
+  return choicesEl.querySelector(`.choice[data-id="${id}"]`);
+}
+
+function chooseAnswer(id, btn) {
+  if (!state.playing || state.locked || btn.disabled) return;
+  if (id === state.current) {
+    btn.classList.add("correct");
+    state.answerMsTotal += performance.now() - state.qStart;
+    handleCorrect();
+    return;
+  }
+  // 不正解: 正解を示して次へ(全駅制覇では後でもう一度出題)
+  const s = stationById[state.current];
+  btn.classList.add("wrong");
+  const right = choiceButton(state.current);
+  if (right) right.classList.add("reveal");
+  choicesEl.querySelectorAll(".choice").forEach((b) => { b.disabled = true; });
+  state.locked = true;
+  state.miss++;
+  state.wrong++;
+  state.qMiss++;
+  resetCombo();
+  if (state.mode === "complete") {
+    const pos = Math.floor(Math.random() * (state.pool.length + 1));
+    state.pool.splice(pos, 0, s.id);
+  }
+  clearPulse();
+  markerEl(s.id).classList.remove("active");
+  markerEl(s.id).classList.add("pass-flash");
+  revealAnswer(s);
+  hintEl.textContent = `正解は「${s.kanji}(${s.kana})」`;
+  hintEl.classList.add("answer");
+  updateStats();
+  setTimeout(() => {
+    if (state.playing) nextQuestion();
+  }, 1200);
+}
+
+// ヒント(4択): 不正解の選択肢を1つ消す
+function markQuizAnswer() {
+  const right = choiceButton(state.current);
+  if (right) right.classList.add("reveal");
+  choicesEl.querySelectorAll(".choice").forEach((b) => { b.disabled = true; });
+}
+
+function quizHint() {
+  const wrongs = [...choicesEl.querySelectorAll(".choice:not(.eliminated)")].filter((b) => b.dataset.id !== state.current);
+  if (wrongs.length <= 1) return false; // 最後の1つは残す(2択までにする)
+  const b = wrongs[Math.floor(Math.random() * wrongs.length)];
+  b.classList.add("eliminated");
+  b.disabled = true;
+  return true;
 }
 
 // ---------- 100秒チャレンジ: 発車タイマー・コンボ・得点 ----------
@@ -401,6 +527,7 @@ function missTrain() {
   markerEl(s.id).classList.remove("active");
   markerEl(s.id).classList.add("pass-flash");
   revealAnswer(s);
+  if (QUIZ_MODE) markQuizAnswer();
   hintEl.textContent = `乗り遅れ！ 答え: ${s.kana}`;
   hintEl.classList.add("answer");
   updateDepartBar(0);
@@ -410,7 +537,7 @@ function missTrain() {
 }
 
 function rankOf(points) {
-  return RANKS.find(([, min]) => points >= min)[0];
+  return (QUIZ_MODE ? QUIZ_RANKS : RANKS).find(([, min]) => points >= min)[0];
 }
 
 function updateProgress() {
@@ -460,8 +587,14 @@ function tick() {
 }
 
 function accuracyText() {
-  const total = state.typed + state.miss;
-  return total === 0 ? "-" : `${((state.typed / total) * 100).toFixed(1)}%`;
+  // 4択は正解数、タイピングは正しく打ったキー数で正確率を出す
+  const good = QUIZ_MODE ? state.score : state.typed;
+  const total = good + state.miss;
+  return total === 0 ? "-" : `${((good / total) * 100).toFixed(1)}%`;
+}
+
+function avgAnswerText() {
+  return state.score === 0 ? "-" : `${(state.answerMsTotal / state.score / 1000).toFixed(2)}秒`;
 }
 
 function finishGame() {
@@ -475,17 +608,21 @@ function finishGame() {
   imeWarnEl.hidden = true;
   timeLabel.classList.remove("danger");
 
-  const key = bestKey(state.mode, state.showKanji);
+  const key = QUIZ_MODE ? "best.quizComplete" : bestKey(state.mode, state.showKanji);
   const prevBest = storageGet(key, null);
-  const kindLabel = state.showKanji ? "駅名表示あり" : "地図のみ";
+  const kindLabel = QUIZ_MODE ? "スマホ4択" : state.showKanji ? "駅名表示あり" : "地図のみ";
 
   if (state.mode === "complete") {
     const totalSec = currentElapsedMs() / 1000;
     resultTitle.textContent = "全駅制覇！";
-    resultDetail.textContent =
-      `タイム: ${totalSec.toFixed(2)}秒\n` +
-      `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回 (計 +${state.hintCount * HINT_PENALTY + state.passCount * PASS_PENALTY}秒)\n` +
-      `ミスタイプ: ${state.miss}回 / 正確率: ${accuracyText()}`;
+    resultDetail.textContent = QUIZ_MODE
+      ? `タイム: ${totalSec.toFixed(2)}秒\n` +
+        `不正解: ${state.wrong}回 / 正答率: ${accuracyText()}\n` +
+        `平均回答時間: ${avgAnswerText()}\n` +
+        `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回 (計 +${state.hintCount * HINT_PENALTY + state.passCount * PASS_PENALTY}秒)`
+      : `タイム: ${totalSec.toFixed(2)}秒\n` +
+        `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回 (計 +${state.hintCount * HINT_PENALTY + state.passCount * PASS_PENALTY}秒)\n` +
+        `ミスタイプ: ${state.miss}回 / 正確率: ${accuracyText()}`;
     const isBest = prevBest === null || totalSec < prevBest;
     if (isBest) {
       storageSet(key, totalSec);
@@ -495,20 +632,27 @@ function finishGame() {
     }
     state.shareText =
       `${GAME_TITLE} 全駅制覇(${kindLabel})を ${totalSec.toFixed(2)}秒でクリア！${isBest ? "(自己ベスト更新)" : ""}\n` +
-      `${state.total}駅 / ミス${state.miss}回 / 正確率${accuracyText()}`;
+      (QUIZ_MODE
+        ? `${state.total}駅 / 不正解${state.wrong}回 / 正答率${accuracyText()}`
+        : `${state.total}駅 / ミス${state.miss}回 / 正確率${accuracyText()}`);
   } else {
     // 実際に遊んだ時間(コンボで延長した分を含む)で平均打鍵速度を出す
     const playedSec = Math.max(1, (performance.now() - state.startTime) / 1000);
     const rank = rankOf(state.points);
     resultTitle.textContent = `タイムアップ！ ランク ${rank}`;
-    resultDetail.textContent =
-      `得点: ${state.points.toLocaleString()}点\n` +
+    resultDetail.textContent = QUIZ_MODE
+      ? `得点: ${state.points.toLocaleString()}点\n` +
+        `正解: ${state.score}駅 / 不正解: ${state.wrong}駅 / 乗り遅れ: ${state.missedTrains}駅\n` +
+        `正答率: ${accuracyText()} / 平均回答時間: ${avgAnswerText()}\n` +
+        `最大コンボ: ${state.maxCombo} / ボーナス +${state.bonusSec}秒\n` +
+        `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回`
+      : `得点: ${state.points.toLocaleString()}点\n` +
       `正解: ${state.score}駅 / 乗り遅れ: ${state.missedTrains}駅\n` +
       `打鍵数: ${state.typed} / 平均 ${(state.typed / playedSec).toFixed(1)} 打/秒\n` +
       `最大コンボ: ${state.maxCombo} / ボーナス +${state.bonusSec}秒\n` +
       `ミスタイプ: ${state.miss}回 / 正確率: ${accuracyText()}\n` +
       `ヒント: ${state.hintCount}回 / パス: ${state.passCount}回`;
-    const scoreKey = bestKey("challengeScore", state.showKanji);
+    const scoreKey = QUIZ_MODE ? "best.quizChallenge" : bestKey("challengeScore", state.showKanji);
     const prevScore = storageGet(scoreKey, null);
     const isBest = prevScore === null || state.points > prevScore;
     if (isBest) {
@@ -519,7 +663,9 @@ function finishGame() {
     }
     state.shareText =
       `${GAME_TITLE} 100秒チャレンジ(${kindLabel})で ${state.points.toLocaleString()}点・ランク ${rank}！${isBest ? "(自己ベスト更新)" : ""}\n` +
-      `正解${state.score}駅 / 最大コンボ${state.maxCombo} / 平均${(state.typed / playedSec).toFixed(1)}打/秒`;
+      (QUIZ_MODE
+        ? `正解${state.score}駅 / 最大コンボ${state.maxCombo} / 平均回答${avgAnswerText()}`
+        : `正解${state.score}駅 / 最大コンボ${state.maxCombo} / 平均${(state.typed / playedSec).toFixed(1)}打/秒`);
   }
   renderBestList();
   document.getElementById("btn-retry").focus();
@@ -565,22 +711,31 @@ function handleCorrect() {
         showBonus(`${state.combo}コンボ！ +${COMBO_BONUS_SEC}秒`);
       }
     }
-    state.points += Math.round(POINTS_PER_STATION * comboMultiplier(state.combo));
+    if (QUIZ_MODE) {
+      const leftRatio = Math.max(0, 1 - (performance.now() - state.qStart) / state.qLimitMs);
+      state.points += Math.round((QUIZ_POINTS_PER_STATION + QUIZ_SPEED_BONUS_MAX * leftRatio) * comboMultiplier(state.combo));
+    } else {
+      state.points += Math.round(POINTS_PER_STATION * comboMultiplier(state.combo));
+    }
   }
   updateProgress();
   revealAnswer(s);
   setTimeout(() => {
     if (state.playing) nextQuestion();
-  }, state.showKanji ? 150 : 400);
+  }, QUIZ_MODE ? 500 : state.showKanji ? 150 : 400);
 }
 
 function useHint() {
   if (!state.playing || state.locked) return;
   const s = stationById[state.current];
-  if (state.revealedHintChars >= s.kana.length) return;
-  state.revealedHintChars++;
-  hintEl.textContent = s.kana.slice(0, state.revealedHintChars).split("").join(" ") +
-    " " + "・".repeat(Math.max(0, s.kana.length - state.revealedHintChars));
+  if (QUIZ_MODE) {
+    if (!quizHint()) return;
+  } else {
+    if (state.revealedHintChars >= s.kana.length) return;
+    state.revealedHintChars++;
+    hintEl.textContent = s.kana.slice(0, state.revealedHintChars).split("").join(" ") +
+      " " + "・".repeat(Math.max(0, s.kana.length - state.revealedHintChars));
+  }
   state.hintCount++;
   state.penaltyMs += HINT_PENALTY * 1000;
   state.qHint = true;
@@ -603,6 +758,7 @@ function pass() {
   markerEl(s.id).classList.remove("active");
   markerEl(s.id).classList.add("pass-flash");
   revealAnswer(s);
+  if (QUIZ_MODE) markQuizAnswer();
   hintEl.textContent = `答え: ${s.kana}`;
   hintEl.classList.add("answer");
   setTimeout(() => {

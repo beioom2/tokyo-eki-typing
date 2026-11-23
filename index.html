@@ -48,9 +48,10 @@
     </div>
     <span id="bonus-pop" class="bonus-pop" aria-live="polite"></span>
     <div id="help-pop" class="help-pop" hidden>
-      <p><kbd>Enter</kbd> ヒント(読みを1文字表示・+10秒)</p>
-      <p><kbd>Esc</kbd> パス(答えを表示・+10秒)</p>
-      <p>si / ti / tu / syo / ltu など色々な打ち方に対応。日本語入力オンのままでも OK</p>
+      <p class="touch-only">📱 スマホ版は4択クイズ。地図で光った駅を選択肢から選ぶ。「ヒント」で不正解を1つ消す(+10秒)</p>
+      <p class="pc-only"><kbd>Enter</kbd> ヒント(読みを1文字表示・+10秒)</p>
+      <p class="pc-only"><kbd>Esc</kbd> パス(答えを表示・+10秒)</p>
+      <p class="pc-only">si / ti / tu / syo / ltu など色々な打ち方に対応。日本語入力オンのままでも OK</p>
       <p>地図はホイールやピンチでズーム、ドラッグで移動。「全体」で全体表示に戻る</p>
       <p><b>100秒チャレンジ</b>: 各駅は発車バーがなくなる前に答えないと乗り遅れ。ミスなし5連続正解ごとに+3秒。正しく打ったキーとコンボで得点が増える</p>
     </div>
@@ -58,8 +59,9 @@
     <!-- モード選択(中央のカード) -->
     <div id="idle-panel" class="card">
       <h1>東京 駅名当てタイピング</h1>
-      <p class="lead">地図で光っている駅の名前をローマ字でタイプしよう</p>
-      <p>モードを選んでスタート！(<b>スペースキー</b>でも開始・リトライできます)</p>
+      <p class="lead pc-only">地図で光っている駅の名前をローマ字でタイプしよう</p>
+      <p>モードを選んでスタート！<span class="pc-only">(<b>スペースキー</b>でも開始・リトライできます)</span></p>
+      <p class="quiz-note">📱 スマホ版は、地図で光った駅を<b>4つの選択肢</b>から選ぶクイズです(駅名は隠れています)</p>
       <label class="option">
         <input type="checkbox" id="opt-show-kanji" checked>
         駅名(漢字)を表示する <span class="muted">(オフ: 地図と路線だけで当てる上級モード)</span>
@@ -84,11 +86,13 @@
       <div class="kanji" id="current-kanji">-</div>
       <div class="line-badges" id="current-lines"></div>
       <div class="kana-hint" id="current-hint">&nbsp;</div>
+      <!-- スマホ版: 4択の選択肢 -->
+      <div class="choices" id="choices"></div>
       <input id="typing-input" type="text" lang="en" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ローマ字で入力...">
       <p class="ime-warning" id="ime-warning" hidden>日本語入力(IME)をオフにして、半角英字で入力してください</p>
       <!-- スマホ用: Enter/Esc キーの代わり -->
       <div class="touch-actions">
-        <button type="button" id="btn-touch-hint">ヒント(+10秒)</button>
+        <button type="button" id="btn-touch-hint">ヒント: 1つ消す(+10秒)</button>
         <button type="button" id="btn-touch-pass">パス(+10秒)</button>
       </div>
     </div>
