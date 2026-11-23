@@ -8,12 +8,8 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>東京 駅名当てタイピング</h1>
-    <p class="subtitle">光っている駅の名前をローマ字でタイプしよう(JR山手線・中央線・総武線 / 東京メトロ・都営地下鉄 主要駅)</p>
-  </header>
-
   <main>
+    <!-- 地図は画面全体に表示し、ほかの要素はその上に重ねる -->
     <section class="map-panel">
       <div id="map-wrap">
         <div id="map" aria-label="東京の路線図"></div>
@@ -22,65 +18,64 @@
       <ul id="legend" class="legend"></ul>
     </section>
 
-    <section class="game-panel">
-      <div id="status-bar">
-        <div class="stat"><span class="label">モード</span><span id="mode-label">-</span></div>
-        <div class="stat"><span class="label">タイム</span><span id="time-label">0.00</span></div>
-        <div class="stat"><span class="label">正解</span><span id="score-label">0</span></div>
-        <div class="stat"><span class="label">ミス</span><span id="miss-label">0</span></div>
+    <!-- 画面上部のステータス -->
+    <div id="status-bar">
+      <div class="stat"><span class="label">モード</span><span id="mode-label">-</span></div>
+      <div class="stat"><span class="label">タイム</span><span id="time-label">0.00</span></div>
+      <div class="stat"><span class="label">正解</span><span id="score-label">0</span></div>
+      <div class="stat"><span class="label">ミス</span><span id="miss-label">0</span></div>
+      <div class="stat progress" id="progress"></div>
+      <button type="button" id="btn-help" class="help-btn" title="操作方法" aria-expanded="false">?</button>
+    </div>
+    <div id="help-pop" class="help-pop" hidden>
+      <p><kbd>Enter</kbd> ヒント(読みを1文字表示・+10秒)</p>
+      <p><kbd>Esc</kbd> パス(答えを表示・+10秒)</p>
+      <p>si / ti / tu / syo / ltu など色々な打ち方に対応。日本語入力オンのままでも OK</p>
+      <p>地図はホイールやピンチでズーム、ドラッグで移動。「全体」で全体表示に戻る</p>
+    </div>
+
+    <!-- モード選択(中央のカード) -->
+    <div id="idle-panel" class="card">
+      <h1>東京 駅名当てタイピング</h1>
+      <p class="lead">地図で光っている駅の名前をローマ字でタイプしよう</p>
+      <p>モードを選んでスタート！(<b>スペースキー</b>でも開始・リトライできます)</p>
+      <label class="option">
+        <input type="checkbox" id="opt-show-kanji" checked>
+        駅名(漢字)を表示する <span class="muted">(オフ: 地図と路線だけで当てる上級モード)</span>
+      </label>
+      <div class="mode-buttons">
+        <button id="btn-complete">全駅制覇モード</button>
+        <button id="btn-challenge">100秒チャレンジ</button>
       </div>
+      <p class="best-list" id="best-list"></p>
+      <details class="station-ref">
+        <summary>収録駅一覧(路線別・参考)</summary>
+        <div id="station-list"></div>
+      </details>
+      <p class="note">駅の位置は実際の緯度経度(© OpenStreetMap contributors)。路線は駅同士を直線で結んだ簡略表示です。</p>
+    </div>
 
-      <div id="question-box">
-        <div id="idle-panel">
-          <p>モードを選んでスタート！(<b>スペースキー</b>でも開始・リトライできます)</p>
-          <label class="option">
-            <input type="checkbox" id="opt-show-kanji" checked>
-            駅名(漢字)を表示する <span class="muted">(オフ: 地図と路線だけで当てる上級モード)</span>
-          </label>
-          <div class="mode-buttons">
-            <button id="btn-complete">全駅制覇モード</button>
-            <button id="btn-challenge">100秒チャレンジ</button>
-          </div>
-          <p class="best-list" id="best-list"></p>
-        </div>
+    <!-- 出題(駅から引き出し線でつないだ吹き出し) -->
+    <div id="leader" class="leader" hidden></div>
+    <div id="play-panel" class="bubble" hidden>
+      <div class="kanji" id="current-kanji">-</div>
+      <div class="line-badges" id="current-lines"></div>
+      <div class="kana-hint" id="current-hint">&nbsp;</div>
+      <input id="typing-input" type="text" lang="en" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ローマ字で入力...">
+      <p class="ime-warning" id="ime-warning" hidden>日本語入力(IME)をオフにして、半角英字で入力してください</p>
+    </div>
 
-        <div id="play-panel" hidden>
-          <div class="q-info">
-            <div class="progress" id="progress"></div>
-            <div class="kanji" id="current-kanji">-</div>
-            <div class="line-badges" id="current-lines"></div>
-            <div class="kana-hint" id="current-hint">&nbsp;</div>
-          </div>
-          <div class="q-input">
-          <input id="typing-input" type="text" lang="en" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ローマ字で入力...">
-          <p class="ime-warning" id="ime-warning" hidden>日本語入力(IME)をオフにして、半角英字で入力してください</p>
-          <p class="controls-hint">
-            <kbd>Enter</kbd> ヒント(1文字・+10秒) ／ <kbd>Esc</kbd> パス(答えを表示・+10秒)<br>
-            si / ti / tu / syo / ltu など色々な打ち方に対応 ／ 日本語入力オンのままでも OK
-          </p>
-          </div>
-        </div>
-
-        <div id="result-panel" hidden>
-          <h2 id="result-title">クリア！</h2>
-          <p id="result-detail"></p>
-          <p class="result-best" id="result-best"></p>
-          <div class="mode-buttons">
-            <button id="btn-retry">もう一度(スペース)</button>
-            <button id="btn-menu" class="secondary">モード選択へ</button>
-          </div>
-        </div>
+    <!-- リザルト(中央のカード) -->
+    <div id="result-panel" class="card" hidden>
+      <h2 id="result-title">クリア！</h2>
+      <p id="result-detail"></p>
+      <p class="result-best" id="result-best"></p>
+      <div class="mode-buttons">
+        <button id="btn-retry">もう一度(スペース)</button>
+        <button id="btn-menu" class="secondary">モード選択へ</button>
       </div>
-    </section>
+    </div>
   </main>
-
-  <footer>
-    <details>
-      <summary>収録駅一覧(路線別・参考)</summary>
-      <div id="station-list"></div>
-    </details>
-    <p class="note">※駅の位置は実際の緯度経度です(駅データ: © OpenStreetMap contributors)。路線は駅同士を直線で結んだ簡略表示で、実際の線路の経路ではありません。地図はホイールやピンチでズーム、ドラッグで移動できます。</p>
-  </footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="data.js"></script>

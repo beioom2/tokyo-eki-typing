@@ -92,7 +92,24 @@ function buildMap() {
   });
 }
 
-// 出題中の駅を目立たせる(脈打つリング)。画面外ならその駅まで地図を動かす
+// 出題中の駅が画面の端に近すぎると吹き出しを出す余白がないので、必要な分だけ地図をずらす
+// (上はステータス表示、下は凡例・出典表示があるため広めに空ける)
+const EDGE_MARGIN = { left: 90, right: 90, top: 130, bottom: 190 };
+function keepStationAwayFromEdges(ll) {
+  const pt = map.latLngToContainerPoint(ll);
+  const size = map.getSize();
+  const m = {
+    left: Math.min(EDGE_MARGIN.left, size.x / 2),
+    right: Math.min(EDGE_MARGIN.right, size.x / 2),
+    top: Math.min(EDGE_MARGIN.top, size.y / 2),
+    bottom: Math.min(EDGE_MARGIN.bottom, size.y / 2),
+  };
+  const dx = pt.x < m.left ? pt.x - m.left : pt.x > size.x - m.right ? pt.x - (size.x - m.right) : 0;
+  const dy = pt.y < m.top ? pt.y - m.top : pt.y > size.y - m.bottom ? pt.y - (size.y - m.bottom) : 0;
+  if (dx || dy) map.panBy([dx, dy], { animate: true });
+}
+
+// 出題中の駅を目立たせる(脈打つリング)
 function setPulse(s) {
   clearPulse();
   const ll = L.latLng(s.lat, s.lng);
@@ -102,7 +119,7 @@ function setPulse(s) {
     keyboard: false,
     zIndexOffset: 1000,
   }).addTo(map);
-  if (!map.getBounds().pad(-0.08).contains(ll)) map.panTo(ll, { animate: true });
+  keepStationAwayFromEdges(ll);
 }
 
 function clearPulse() {
@@ -234,6 +251,7 @@ function startGame(mode) {
   state.mode = mode;
   state.showKanji = showKanjiEl.checked;
   state.playing = true;
+  document.body.classList.add("playing");
   state.locked = false;
   state.pool = shuffledStationIds();
   state.total = state.pool.length;
@@ -301,6 +319,7 @@ function nextQuestion() {
   setPulse(s);
   state.locked = false;
   updateProgress();
+  placeBubble(true);
 }
 
 function updateProgress() {
@@ -349,9 +368,11 @@ function accuracyText() {
 
 function finishGame() {
   state.playing = false;
+  document.body.classList.remove("playing");
   if (state.timerHandle) cancelAnimationFrame(state.timerHandle);
   clearActiveHighlight();
   playPanel.hidden = true;
+  placeBubble(true); // 引き出し線も隠す
   resultPanel.hidden = false;
   imeWarnEl.hidden = true;
   timeLabel.classList.remove("danger");
@@ -598,3 +619,128 @@ document.getElementById("btn-menu").addEventListener("click", () => {
 map.on("click", () => { if (state.playing) inputEl.focus(); });
 map.on("moveend", () => { if (state.playing && document.activeElement !== inputEl) inputEl.focus({ preventScroll: true }); });
 playPanel.addEventListener("click", () => inputEl.focus());
+
+// ---------- 出題の吹き出し ----------
+// 出題中の駅の近くに吹き出しを出し、引き出し線で駅とつなぐ。
+// 右上・左上・右下・左下・真上・真下・右・左の候補から、隠れる駅が最も少なく、
+// 画面や重ねている UI(ステータス・凡例・ボタン)にかからない位置を選ぶ。
+const leaderEl = document.getElementById("leader");
+const BUBBLE_GAP = 44; // 駅から吹き出しまでの距離(px)
+const BUBBLE_DIRS = ["ne", "nw", "se", "sw", "n", "s", "e", "w"]; // 同点のときはこの順で優先
+let bubbleDir = "ne";
+
+function screenRect(el) {
+  if (!el || el.hidden || el.offsetParent === null) return null;
+  const r = el.getBoundingClientRect();
+  return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+}
+
+function rectsOverlap(a, b, pad = 0) {
+  return a.left < b.right + pad && a.right > b.left - pad && a.top < b.bottom + pad && a.bottom > b.top - pad;
+}
+
+function bubbleCandidates(x, y, w, h) {
+  const g = BUBBLE_GAP;
+  return {
+    ne: [x + g, y - g - h],
+    nw: [x - g - w, y - g - h],
+    se: [x + g, y + g],
+    sw: [x - g - w, y + g],
+    n: [x - w / 2, y - g - 16 - h],
+    s: [x - w / 2, y + g + 16],
+    e: [x + g + 16, y - h / 2],
+    w: [x - g - 16 - w, y - h / 2],
+  };
+}
+
+function clampToViewport(left, top, w, h) {
+  return [
+    Math.min(Math.max(left, 8), window.innerWidth - w - 8),
+    Math.min(Math.max(top, 8), window.innerHeight - h - 8),
+  ];
+}
+
+function chooseBubbleDir(x, y, w, h) {
+  const obstacles = [
+    document.getElementById("status-bar"),
+    document.getElementById("legend"),
+    document.getElementById("btn-map-reset"),
+    document.querySelector(".leaflet-control-zoom"),
+    document.querySelector(".leaflet-control-attribution"),
+  ].map(screenRect).filter(Boolean);
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const points = STATIONS.filter((st) => st.id !== state.current).map((st) => {
+    const p = map.latLngToContainerPoint([st.lat, st.lng]);
+    return [mapRect.left + p.x, mapRect.top + p.y];
+  });
+
+  let best = bubbleDir;
+  let bestScore = Infinity;
+  const cands = bubbleCandidates(x, y, w, h);
+  BUBBLE_DIRS.forEach((dir, order) => {
+    // 画面からはみ出す候補も、実際に表示するときと同じく画面内へ押し込んだ位置で評価する
+    const [left, top] = clampToViewport(cands[dir][0], cands[dir][1], w, h);
+    const r = { left, top, right: left + w, bottom: top + h };
+    let score = order * 0.01; // 同点時の優先順
+    // 押し込んだ結果、出題中の駅そのものを隠してしまう位置は使わない
+    if (x > r.left - 14 && x < r.right + 14 && y > r.top - 14 && y < r.bottom + 14) score += 1000;
+    obstacles.forEach((o) => { if (rectsOverlap(r, o, 6)) score += 500; });
+    points.forEach(([px, py]) => {
+      if (px > r.left - 10 && px < r.right + 10 && py > r.top - 10 && py < r.bottom + 10) score += 1;
+    });
+    if (score < bestScore) { bestScore = score; best = dir; }
+  });
+  return best;
+}
+
+// rechoose: true のときは向きを選び直す(新しい問題・ズーム・移動終了時)。
+// ドラッグ中は向きを固定したまま位置だけ追従させ、吹き出しが飛び回らないようにする。
+function placeBubble(rechoose) {
+  if (playPanel.hidden || !state.playing || !state.current) {
+    leaderEl.hidden = true;
+    return;
+  }
+  const s = stationById[state.current];
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const p = map.latLngToContainerPoint([s.lat, s.lng]);
+  const x = mapRect.left + p.x;
+  const y = mapRect.top + p.y;
+  const w = playPanel.offsetWidth;
+  const h = playPanel.offsetHeight;
+
+  if (rechoose) bubbleDir = chooseBubbleDir(x, y, w, h);
+  // 画面外にはみ出す場合は画面内に収める
+  const [left, top] = clampToViewport(...bubbleCandidates(x, y, w, h)[bubbleDir], w, h);
+  playPanel.style.left = `${left}px`;
+  playPanel.style.top = `${top}px`;
+
+  // 引き出し線: 駅から吹き出しの一番近い点まで
+  const nx = Math.min(Math.max(x, left), left + w);
+  const ny = Math.min(Math.max(y, top), top + h);
+  const len = Math.hypot(nx - x, ny - y);
+  leaderEl.hidden = len < 4;
+  leaderEl.style.left = `${x}px`;
+  leaderEl.style.top = `${y - 1}px`;
+  leaderEl.style.width = `${len}px`;
+  leaderEl.style.transform = `rotate(${Math.atan2(ny - y, nx - x)}rad)`;
+}
+
+map.on("move", () => placeBubble(false));
+map.on("zoomend moveend", () => placeBubble(true));
+window.addEventListener("resize", () => placeBubble(true));
+
+// ---------- 操作方法のポップアップ ----------
+const helpBtn = document.getElementById("btn-help");
+const helpPop = document.getElementById("help-pop");
+function setHelpOpen(open) {
+  helpPop.hidden = !open;
+  helpBtn.setAttribute("aria-expanded", String(open));
+}
+helpBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setHelpOpen(helpPop.hidden);
+  if (state.playing) inputEl.focus({ preventScroll: true });
+});
+document.addEventListener("click", (e) => {
+  if (!helpPop.hidden && !helpPop.contains(e.target) && e.target !== helpBtn) setHelpOpen(false);
+});
