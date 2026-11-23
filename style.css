@@ -182,10 +182,6 @@ footer {
 #station-list .line-group { grid-column: 1 / -1; margin-top: 8px; font-weight: bold; color: var(--ink); }
 .note { margin-top: 14px; }
 
-/* 横に並ばない幅では縦積みにして、ゲームパネルも横幅いっぱいにする */
-@media (max-width: 1000px) {
-  .game-panel { flex: 1 1 100%; max-width: 100%; }
-}
 @media (max-width: 640px) {
   main { padding: 10px; gap: 12px; }
   #map-wrap { height: auto; aspect-ratio: 1 / 1; }
@@ -237,3 +233,60 @@ kbd { font-family: inherit; font-size: 0.72rem; padding: 0 5px; border: 1px soli
 #typing-input.key-input:focus { border-color: #9aa5b1; }
 #typing-input.key-input.valid { border-color: #2ecc71; }
 #typing-input.key-input.invalid { border-color: var(--accent); }
+
+/* ---------- レイアウト: 地図を横幅いっぱいにし、ゲームパネルは地図の下に横長で置く ---------- */
+header { padding: 12px 16px 4px; }
+header h1 { font-size: 1.4rem; }
+
+main { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 12px; max-width: 1800px; padding: 12px 16px; }
+footer { max-width: 1800px; }
+.map-panel { flex: none; width: 100%; padding: 10px; }
+.legend { margin-top: 8px; }
+/* 地図の高さ = 画面の高さ - 見出し - 下のゲームパネル(約170px) - 余白 */
+#map-wrap { height: clamp(360px, calc(100vh - 350px), 1100px); }
+
+.game-panel {
+  flex: none;
+  width: 100%;
+  max-width: none;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+}
+#status-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px; }
+#question-box { min-height: 140px; }
+
+#play-panel:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(320px, 1.4fr);
+  align-items: center;
+  gap: 24px;
+}
+.q-info { text-align: center; }
+.q-info .kana-hint { margin: 4px 0 0; }
+.q-input .controls-hint { margin: 8px 0 0; text-align: left; }
+#idle-panel p:first-child { margin-top: 0; }
+#result-title { margin-bottom: 4px; }
+#result-detail, .result-best { margin: 4px 0; }
+
+/* 狭い画面では従来どおり縦に積む */
+@media (max-width: 760px) {
+  .game-panel { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+  #status-bar { display: flex; justify-content: space-between; }
+  #play-panel:not([hidden]) { display: block; }
+  .q-input .controls-hint { text-align: center; }
+  .q-info .kana-hint { margin: 6px 0 12px; }
+}
+@media (max-width: 640px) {
+  #map-wrap { height: auto; aspect-ratio: 1 / 1; }
+}
+/* 高さの低い画面(ノートPC等)では見出しの説明文を隠し、その分を地図に回す */
+@media (max-height: 860px) and (min-width: 641px) {
+  header { padding: 8px 16px 0; }
+  header .subtitle { display: none; }
+  #map-wrap { height: clamp(320px, calc(100vh - 300px), 1100px); }
+  .kanji { font-size: 2rem; }
+  #question-box { min-height: 120px; }
+}

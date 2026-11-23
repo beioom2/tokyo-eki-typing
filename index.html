@@ -45,16 +45,20 @@
         </div>
 
         <div id="play-panel" hidden>
-          <div class="progress" id="progress"></div>
-          <div class="kanji" id="current-kanji">-</div>
-          <div class="line-badges" id="current-lines"></div>
-          <div class="kana-hint" id="current-hint">&nbsp;</div>
+          <div class="q-info">
+            <div class="progress" id="progress"></div>
+            <div class="kanji" id="current-kanji">-</div>
+            <div class="line-badges" id="current-lines"></div>
+            <div class="kana-hint" id="current-hint">&nbsp;</div>
+          </div>
+          <div class="q-input">
           <input id="typing-input" type="text" lang="en" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ローマ字で入力...">
           <p class="ime-warning" id="ime-warning" hidden>日本語入力(IME)をオフにして、半角英字で入力してください</p>
           <p class="controls-hint">
             <kbd>Enter</kbd> ヒント(1文字・+10秒) ／ <kbd>Esc</kbd> パス(答えを表示・+10秒)<br>
             si / ti / tu / syo / ltu など色々な打ち方に対応 ／ 日本語入力オンのままでも OK
           </p>
+          </div>
         </div>
 
         <div id="result-panel" hidden>
