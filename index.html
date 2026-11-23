@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>東京駅名当てタイピング</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>東京 駅名当てタイピング</h1>
+    <p class="subtitle">光っている駅の名前をローマ字でタイプしよう(JR山手線・中央線・総武線 / 東京メトロ・都営地下鉄 主要駅)</p>
+  </header>
+
+  <main>
+    <section class="map-panel">
+      <div id="map-wrap">
+        <svg id="map" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <ul id="legend" class="legend"></ul>
+    </section>
+
+    <section class="game-panel">
+      <div id="status-bar">
+        <div class="stat"><span class="label">モード</span><span id="mode-label">-</span></div>
+        <div class="stat"><span class="label">タイム</span><span id="time-label">0.00</span></div>
+        <div class="stat"><span class="label">正解</span><span id="score-label">0</span></div>
+        <div class="stat"><span class="label">ミス</span><span id="miss-label">0</span></div>
+      </div>
+
+      <div id="question-box">
+        <div id="idle-panel">
+          <p>モードを選んでスタート！(<b>スペースキー</b>でも開始・リトライできます)</p>
+          <label class="option">
+            <input type="checkbox" id="opt-show-kanji" checked>
+            駅名(漢字)を表示する <span class="muted">(オフ: 地図と路線だけで当てる上級モード)</span>
+          </label>
+          <div class="mode-buttons">
+            <button id="btn-complete">全駅制覇モード</button>
+            <button id="btn-challenge">100秒チャレンジ</button>
+          </div>
+          <p class="best-list" id="best-list"></p>
+        </div>
+
+        <div id="play-panel" hidden>
+          <div class="progress" id="progress"></div>
+          <div class="kanji" id="current-kanji">-</div>
+          <div class="line-badges" id="current-lines"></div>
+          <div class="kana-hint" id="current-hint">&nbsp;</div>
+          <input id="typing-input" type="text" lang="en" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ローマ字で入力...">
+          <p class="ime-warning" id="ime-warning" hidden>日本語入力(IME)をオフにして、半角英字で入力してください</p>
+          <p class="controls-hint">
+            <kbd>Enter</kbd> ヒント(1文字・+10秒) ／ <kbd>Esc</kbd> パス(答えを表示・+10秒)<br>
+            si / ti / tu / syo / ltu など色々な打ち方に対応 ／ クリックで入力欄に復帰
+          </p>
+        </div>
+
+        <div id="result-panel" hidden>
+          <h2 id="result-title">クリア！</h2>
+          <p id="result-detail"></p>
+          <p class="result-best" id="result-best"></p>
+          <div class="mode-buttons">
+            <button id="btn-retry">もう一度(スペース)</button>
+            <button id="btn-menu" class="secondary">モード選択へ</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <details>
+      <summary>収録駅一覧(路線別・参考)</summary>
+      <div id="station-list"></div>
+    </details>
+    <p class="note">※路線図は実際の地理座標ではなく、覚えやすさを優先した簡略化した模式図です。</p>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="romaji.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
